@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>911 GT3 檢視器</title>
+<style>
+  :root {
+    --bg-top: #ffffff;
+    --bg-bottom: #888888;
+    --panel-bg: rgba(18, 22, 30, 0.86);
+    --panel-fg: #e8ecf2;
+    --panel-muted: #9aa4b2;
+    --panel-line: rgba(255, 255, 255, 0.10);
+    --accent: #3d9bff;
+    --danger: #ff3b30;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+  body { background: linear-gradient(to bottom, var(--bg-top), var(--bg-bottom)); }
+  #view { position: fixed; inset: 0; right: 320px; }
+  #view canvas { display: block; width: 100%; height: 100%; }
+  #panel {
+    position: fixed; top: 0; right: 0; bottom: 0; width: 320px; overflow-y: auto;
+    background: var(--panel-bg); color: var(--panel-fg); backdrop-filter: blur(8px);
+    padding: 14px 16px 24px; font-size: 13px; line-height: 1.45;
+    border-left: 1px solid var(--panel-line);
+  }
+  #panel h1 { font-size: 15px; margin: 2px 0 2px; font-weight: 600; }
+  #panel .file { color: var(--panel-muted); font-size: 12px; margin-bottom: 10px; word-break: break-all; }
+  section { border-top: 1px solid var(--panel-line); padding: 12px 0 10px; }
+  section h2 { font-size: 13px; margin: 0 0 8px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  section h2 .n { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,.12); font-size: 11px; }
+  section.disabled { opacity: .35; pointer-events: none; }
+  section .note { display: none; color: var(--panel-muted); font-size: 11px; margin-top: 4px; }
+  section.disabled .note { display: block; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+  .row label { flex: 1; }
+  input[type=color] { width: 44px; height: 26px; border: 1px solid var(--panel-line); border-radius: 6px; background: none; padding: 1px; cursor: pointer; }
+  .row label.switch, .switch { position: relative; width: 38px; height: 22px; flex: 0 0 38px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch span { position: absolute; inset: 0; background: rgba(255,255,255,.18); border-radius: 22px; transition: .2s; cursor: pointer; }
+  .switch span::before { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::before { transform: translateX(16px); }
+  .radio { display: flex; align-items: center; gap: 8px; margin: 6px 0; cursor: pointer; }
+  .radio input { accent-color: var(--accent); }
+  .sub { margin: 2px 0 6px 24px; display: none; }
+  .sub.show { display: flex; }
+  details { border: 1px solid var(--panel-line); border-radius: 8px; margin: 6px 0; }
+  details summary { cursor: pointer; padding: 6px 10px; list-style: none; display: flex; justify-content: space-between; }
+  details summary::-webkit-details-marker { display: none; }
+  details summary .cnt { color: var(--danger); font-size: 12px; }
+  details .items { padding: 2px 10px 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+  details .items label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; }
+  details .items input { accent-color: var(--danger); }
+  button { background: rgba(255,255,255,.1); color: var(--panel-fg); border: 1px solid var(--panel-line); border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 12px; }
+  button:hover { background: rgba(255,255,255,.18); }
+  button:disabled { opacity: .6; cursor: default; }
+  .switch input:disabled + span { opacity: .6; cursor: default; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  #drop {
+    position: fixed; inset: 0; right: 320px; display: none; place-items: center; z-index: 5;
+    background: rgba(20, 110, 255, .18); border: 3px dashed var(--accent); color: #0b3d91; font-size: 22px; font-weight: 600;
+  }
+  #drop.show { display: grid; }
+  #msg { position: fixed; left: 16px; bottom: 16px; right: 336px; color: #222; font-size: 13px; pointer-events: none; text-shadow: 0 1px 0 rgba(255,255,255,.6); }
+  #msg.err { color: #b00020; }
+  #toggle { display: none; }
+  @media (max-width: 760px) {
+    #view, #drop { right: 0; }
+    #msg { right: 16px; }
+    #panel { width: min(320px, 88vw); transform: translateX(100%); transition: transform .25s; z-index: 10; }
+    #panel.open { transform: none; }
+    #toggle { display: block; position: fixed; top: 12px; right: 12px; z-index: 11; font-size: 16px; padding: 6px 10px; background: rgba(18,22,30,.8); }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="view"></div>
+<div id="drop">放開以載入 GLB 模型</div>
+<div id="msg"></div>
+<button id="toggle">☰</button>
+
+<aside id="panel">
+  <h1>控制面板</h1>
+  <div class="file" id="fileName">載入中…</div>
+
+  <section id="secBg">
+    <h2><span class="n">1</span>背景顏色（上 → 下漸層）</h2>
+    <div class="row"><label for="bgTop">上方顏色</label><input type="color" id="bgTop" value="#ffffff"></div>
+    <div class="row"><label for="bgBottom">下方顏色</label><input type="color" id="bgBottom" value="#888888"></div>
+  </section>
+
+  <section id="secPaint" class="car-only">
+    <h2><span class="n">2</span>車身顏色</h2>
+    <div class="row"><label for="paint">烤漆顏色</label><input type="color" id="paint" value="#2f5a8c"></div>
+    <div class="note">僅 pcar_opus55h_3.glb 可使用</div>
+  </section>
+
+  <section id="secAnim" class="car-only">
+    <h2><span class="n">3</span>動畫</h2>
+    <div class="row"><label for="spin">輪子旋轉</label><label class="switch"><input type="checkbox" id="spin"><span></span></label></div>
+    <div class="row"><label for="doorSw" id="doorLabel">打開車門</label><label class="switch"><input type="checkbox" id="doorSw"><span></span></label></div>
+    <div class="note">僅 pcar_opus55h_3.glb 可使用</div>
+  </section>
+
+  <section id="secMode">
+    <h2><span class="n">4</span>顯示模式</h2>
+    <label class="radio"><input type="radio" name="mode" value="original" checked>原圖</label>
+    <label class="radio"><input type="radio" name="mode" value="holo">全息影像</label>
+    <div class="row sub" id="holoSub"><label for="holoColor">全息影像顏色</label><input type="color" id="holoColor" value="#2f9bff"></div>
+    <label class="radio"><input type="radio" name="mode" value="static">靜態全息影像</label>
+    <div class="row sub" id="staticSub"><label for="staticColor">靜態全息影像顏色</label><input type="color" id="staticColor" value="#3aa4ff"></div>
+  </section>
+
+  <section id="secParts" class="car-only">
+    <h2><span class="n">5</span>零件顯示</h2>
+    <div id="partToggles"></div>
+    <div class="btns"><button id="allOn">全部顯示</button><button id="allOff">全部隱藏</button></div>
+    <div class="note">僅 pcar_opus55h_3.glb 可使用</div>
+  </section>
+
+  <section id="secFault" class="car-only">
+    <h2><span class="n">6</span>故障零件 <span id="faultTotal" style="color:var(--danger);font-weight:400"></span></h2>
+    <div id="faultList"></div>
+    <div class="btns"><button id="faultClear">清除全部故障</button></div>
+    <div class="note">僅 pcar_opus55h_3.glb 可使用</div>
+  </section>
+
+  <section id="secLoad">
+    <h2><span class="n">7</span>載入其它模型</h2>
+    <div style="color:var(--panel-muted);font-size:12px">把 .glb 檔拖進畫面即可載入，或：</div>
+    <div class="btns"><button id="pick">選擇 GLB 檔…</button><button id="reload">重新載入預設車輛</button></div>
+    <input type="file" id="fileInput" accept=".glb,.gltf" hidden>
+  </section>
+</aside>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const CAR_FILE = 'pcar_opus55h_3.glb';
+const PAINT_MAT = 'Paint_SharkBlue';
+
+// ------------------------------------------------------------------ renderer / scene
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+view.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(4, 8, 5);
+scene.add(sun);
+
+const camera = new THREE.PerspectiveCamera(35, 1, 0.01, 500);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.enablePan = true;
+
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+
+// soft contact shadow
+function shadowTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(128, 128, 10, 128, 128, 128);
+  grd.addColorStop(0, 'rgba(0,0,0,0.55)'); grd.addColorStop(0.6, 'rgba(0,0,0,0.25)'); grd.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
+  return new THREE.CanvasTexture(c);
+}
+const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+  new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false, toneMapped: false }));
+shadow.rotation.x = -Math.PI / 2;
+scene.add(shadow);
+
+// ------------------------------------------------------------------ hologram materials
+const clock = new THREE.Clock();
+const uTime = { value: 0 };
+const uMinY = { value: 0 }, uMaxY = { value: 1.3 };
+
+const holoVS = /* glsl */`
+  uniform float uTime;
+  varying vec3 vN; varying vec3 vView; varying vec3 vWorld;
+  float hash(float n) { return fract(sin(n) * 43758.5453); }
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    #ifdef GLITCH
+      float slot = floor(uTime * 6.0);
+      float g = step(0.93, hash(slot));
+      float band = step(0.8, hash(floor(wp.y * 18.0) + slot * 7.0));
+      wp.x += g * band * 0.035 * sin(uTime * 90.0);
+    #endif
+    vWorld = wp.xyz;
+    vN = normalize(mat3(modelMatrix) * normal);
+    vView = cameraPosition - wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }`;
+
+// animated hologram: scan lines, sweeping band, flicker, glitch
+const holoFS = /* glsl */`
+  uniform vec3 uColor; uniform float uTime; uniform float uMinY; uniform float uMaxY;
+  varying vec3 vN; varying vec3 vView; varying vec3 vWorld;
+  void main() {
+    vec3 n = normalize(vN); vec3 v = normalize(vView);
+    float fres = pow(1.0 - abs(dot(n, v)), 2.0);
+    float h = (vWorld.y - uMinY) / max(uMaxY - uMinY, 1e-4);
+    float lines = pow(0.5 + 0.5 * sin(h * 420.0 - uTime * 5.0), 8.0);
+    float band = smoothstep(0.07, 0.0, abs(h - fract(uTime * 0.28) * 1.2 + 0.1));
+    float flick = 0.9 + 0.1 * sin(uTime * 41.0) * sin(uTime * 17.0);
+    float a = (0.07 + fres * 0.85 + lines * 0.22 + band * 0.45) * flick;
+    vec3 col = uColor * (0.55 + fres * 1.3 + band * 0.9) + vec3(1.0) * fres * fres * 0.25;
+    gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
+  }`;
+
+// static hologram (x-ray blueprint look)
+const staticFS = /* glsl */`
+  uniform vec3 uColor;
+  varying vec3 vN; varying vec3 vView; varying vec3 vWorld;
+  void main() {
+    vec3 n = normalize(vN); vec3 v = normalize(vView);
+    float fres = pow(1.0 - abs(dot(n, v)), 1.7);
+    float a = 0.045 + fres * 0.5;
+    vec3 col = uColor * (0.45 + fres * 1.2) + vec3(1.0) * fres * fres * 0.15;
+    gl_FragColor = vec4(col, a);
+  }`;
+
+const holoMat = new THREE.ShaderMaterial({
+  uniforms: { uColor: { value: new THREE.Color('#2f9bff') }, uTime, uMinY, uMaxY },
+  vertexShader: holoVS, fragmentShader: holoFS, defines: { GLITCH: 1 },
+  transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.NormalBlending, toneMapped: false,
+});
+const staticMat = new THREE.ShaderMaterial({
+  uniforms: { uColor: { value: new THREE.Color('#3aa4ff') }, uTime },
+  vertexShader: holoVS, fragmentShader: staticFS,
+  transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.NormalBlending, toneMapped: false,
+});
+const edgeMat = new THREE.LineBasicMaterial({ color: '#3aa4ff', transparent: true, opacity: 0.55, depthWrite: false, toneMapped: false });
+
+// ------------------------------------------------------------------ fault glow materials
+const faultGlow = new THREE.ShaderMaterial({
+  uniforms: { uTime, uWidth: { value: 0.012 }, uColor: { value: new THREE.Color(1.0, 0.08, 0.04) } },
+  vertexShader: /* glsl */`
+    uniform float uWidth; varying vec3 vN; varying vec3 vView;
+    void main() {
+      vec4 wp = modelMatrix * vec4(position + normal * uWidth, 1.0);
+      vN = normalize(mat3(modelMatrix) * normal); vView = cameraPosition - wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }`,
+  fragmentShader: /* glsl */`
+    uniform vec3 uColor; uniform float uTime; varying vec3 vN; varying vec3 vView;
+    void main() {
+      float fres = pow(1.0 - abs(dot(normalize(vN), normalize(vView))), 1.4);
+      float pulse = 0.65 + 0.35 * sin(uTime * 5.0);
+      gl_FragColor = vec4(uColor * (1.0 + fres), (0.18 + fres * 0.8) * pulse);
+    }`,
+  transparent: true, depthWrite: false, depthTest: false, blending: THREE.NormalBlending, toneMapped: false,
+});
+const faultTint = new THREE.MeshBasicMaterial({
+  color: 0xff2010, transparent: true, opacity: 0.45, depthWrite: false,
+  polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4, toneMapped: false,
+});
+
+// ------------------------------------------------------------------ part definitions (pcar_opus55h_3.glb)
+const GROUPS = [
+  ['Wheels', '輪子'], ['Body', '車身'], ['Doors', '車門'], ['Headlights', '前車燈'], ['Taillights', '後車燈'],
+  ['Windows', '窗戶'], ['Mirrors', '後照鏡'], ['Wipers', '雨刷'], ['Interior', '車內座椅與方向盤'],
+];
+// [label, name regex, side filter L/R (x sign), F/B (z sign)]
+const FAULTS = {
+  Wheels: [['左前輪', /^(Wheel|Brake)_FL/], ['右前輪', /^(Wheel|Brake)_FR/], ['左後輪', /^(Wheel|Brake)_RL/], ['右後輪', /^(Wheel|Brake)_RR/]],
+  Body: [
+    ['車殼', /^Body_Shell/], ['前進氣口', /^Front_(Intake|AirCurtain)/], ['前下擾流', /^Front_Splitter/],
+    ['引擎蓋散熱口', /^(Hood_|Front_Crest)/], ['擋風玻璃導流板', /^Cowl_/],
+    ['左側裙', /^Side_Skirt/, 'L'], ['右側裙', /^Side_Skirt/, 'R'],
+    ['左前輪拱', /^WheelWell/, 'L', 'F'], ['右前輪拱', /^WheelWell/, 'R', 'F'],
+    ['左後輪拱', /^WheelWell/, 'L', 'B'], ['右後輪拱', /^WheelWell/, 'R', 'B'],
+    ['左窗框', /^Window_Surround/, 'L'], ['右窗框', /^Window_Surround/, 'R'],
+    ['左門框', /^Door_Jamb/, 'L'], ['右門框', /^Door_Jamb/, 'R'], ['玻璃黑邊', /^Glass_Frit/],
+    ['引擎蓋格柵', /^Engine_Grille/], ['尾翼唇邊', /^Rear_Spoiler/], ['後擴散器', /^(Rear_Diffuser|Diffuser_Fin)/],
+    ['排氣管', /^(Exhaust|Cylinder)/], ['車尾字樣', /^Rear_Lettering/],
+  ],
+  Doors: [['左車門', /^Door_(Left|Handle_Left)/], ['右車門', /^Door_(Right|Handle_Right)/]],
+  Headlights: [['左頭燈', /^Headlight_Left/], ['右頭燈', /^Headlight_Right/], ['左霧燈', /^FogLight_Left/], ['右霧燈', /^FogLight_Right/]],
+  Taillights: [['尾燈條', /^Taillight_Bar/], ['第三煞車燈', /^Taillight_ThirdBrake/], ['左反光片', /^Taillight_Reflector_Left/], ['右反光片', /^Taillight_Reflector_Right/]],
+  Windows: [['前擋風玻璃', /^Window_Windshield/], ['後擋風玻璃', /^Window_Rear/], ['左車窗', /^Window_Door_Left/],
+            ['右車窗', /^Window_Door_Right/], ['左三角窗', /^Window_Quarter_Left/], ['右三角窗', /^Window_Quarter_Right/]],
+  Mirrors: [['左後照鏡', /^Mirror_(Left|Sail_Left)/], ['右後照鏡', /^Mirror_(Right|Sail_Right)/], ['車內後視鏡', /^Mirror_Interior/]],
+  Wipers: [['左雨刷', /^Wiper_Left/], ['右雨刷', /^Wiper_Right/]],
+  Interior: [['駕駛座', /^Seat_Driver/], ['乘客座', /^Seat_Passenger/], ['方向盤', /^Steering_Wheel/], ['儀表板', /^Dash/],
+             ['中控台', /^Center_Console/], ['地板與防火牆', /^(Floor|Firewall)/], ['後置物平台', /^Rear_Shelf/]],
+};
+
+// ------------------------------------------------------------------ state
+let model = null, isCar = false, mode = 'original', spin = false;
+let wheels = [];
+// door animation: each side swings about a vertical hinge at the door's front edge
+const DOOR_ANGLE = THREE.MathUtils.degToRad(62), DOOR_TIME = 1.3;
+let doorRigs = [], doorT = 0, doorTarget = 0;
+const DOOR_PARTS = { L: /^(Door_Left|Door_Handle_Left|Window_Door_Left|Mirror_Left|Mirror_Sail_Left)$/,
+                     R: /^(Door_Right|Door_Handle_Right|Window_Door_Right|Mirror_Right|Mirror_Sail_Right)$/ };
+const faultTargets = new Map();   // id -> [Object3D]
+const faulty = new Set();
+const $ = (id) => document.getElementById(id);
+const msg = (t, err = false) => { $('msg').textContent = t || ''; $('msg').className = err ? 'err' : ''; };
+
+// ------------------------------------------------------------------ loading
+const loader = new GLTFLoader();
+
+function disposeModel() {
+  if (!model) return;
+  scene.remove(model);
+  model.traverse((o) => {
+    if (o.isMesh || o.isLineSegments) {
+      if (!o.userData.fx) o.geometry?.dispose();
+      const mats = [].concat(o.userData.orig || o.material);
+      mats.forEach((m) => m && m !== holoMat && m !== staticMat && m !== edgeMat && m !== faultGlow && m !== faultTint && m.dispose?.());
+    }
+  });
+  model = null;
+}
+
+function setModel(gltfScene, name) {
+  disposeModel();
+  faulty.clear(); faultTargets.clear(); wheels = []; doorRigs = []; doorT = doorTarget = 0; updateDoorBtn();
+  model = gltfScene;
+  isCar = name.split(/[\\/]/).pop() === CAR_FILE;
+  model.traverse((o) => { if (o.isMesh) o.userData.orig = o.material; });
+  scene.add(model);
+
+  // frame camera
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3());
+  const r = Math.max(size.x, size.y, size.z) || 1;
+  uMinY.value = box.min.y; uMaxY.value = box.max.y;
+  controls.target.copy(center);
+  camera.position.copy(center).add(new THREE.Vector3(r * 0.95, r * 0.42, r * 1.05));
+  camera.near = r / 200; camera.far = r * 50; camera.updateProjectionMatrix();
+  controls.minDistance = r * 0.25; controls.maxDistance = r * 6;
+  controls.update();
+  shadow.scale.set(size.x * 1.5 || 1, size.z * 1.25 || 1, 1);
+  shadow.position.set(center.x, box.min.y + r * 0.001, center.z);
+  faultGlow.uniforms.uWidth.value = r * 0.0028;
+
+  $('fileName').textContent = `目前模型：${name}` + (isCar ? '' : '（非預設車輛：僅可使用第 1、4 項）');
+  document.querySelectorAll('.car-only').forEach((s) => s.classList.toggle('disabled', !isCar));
+  if (isCar) setupCar();
+  $('spin').checked = spin = spin && isCar;
+  applyMode();
+  msg('');
+}
+
+function loadURL(url, name) {
+  msg('載入中…');
+  loader.load(url, (g) => setModel(g.scene, name), undefined, (e) => {
+    console.error(e);
+    msg(location.protocol === 'file:'
+      ? `無法自動載入 ${CAR_FILE}（瀏覽器限制 file:// 讀檔）。請把 glb 檔拖進畫面，或用本機伺服器開啟，例如在此目錄執行：python3 -m http.server`
+      : `無法載入 ${name}：${e.message || e}`, true);
+    $('fileName').textContent = '尚未載入模型';
+  });
+}
+
+function loadFile(file) {
+  if (!/\.(glb|gltf)$/i.test(file.name)) { msg('請選擇 .glb 檔', true); return; }
+  msg('載入中…');
+  file.arrayBuffer().then((buf) => loader.parse(buf, '', (g) => setModel(g.scene, file.name), (e) => msg('解析失敗：' + (e.message || e), true)));
+}
+
+// ------------------------------------------------------------------ car specific setup
+function groupNode(key) { return model.getObjectByName(key); }
+
+function setupCar() {
+  // paint colour picker default = model paint
+  let paint = null;
+  model.traverse((o) => { if (o.isMesh && o.userData.orig?.name === PAINT_MAT) paint = o.userData.orig; });
+  if (paint) $('paint').value = '#' + paint.color.getHexString();
+
+  // wheels
+  wheels = [];
+  const wg = groupNode('Wheels');
+  wg?.children.forEach((c) => { if (/^Wheel_(FL|FR|RL|RR)/.test(c.name)) wheels.push(c); });
+
+  // doors: collect the parts that move with each door and find the hinge line
+  doorRigs = [];
+  for (const side of ['L', 'R']) {
+    const parts = [];
+    model.traverse((o) => { if (DOOR_PARTS[side].test(o.name)) parts.push(o); });
+    const door = parts.find((o) => /^Door_(Left|Right)$/.test(o.name));
+    if (!door) continue;
+    const box = new THREE.Box3().setFromObject(door);
+    const hinge = new THREE.Vector3(side === 'L' ? box.max.x : box.min.x, 0, box.max.z - 0.01);   // front edge (+Z is forward)
+    doorRigs.push({
+      sign: side === 'L' ? -1 : 1,         // left door (+X) swings outward with a negative Y rotation
+      hinge,
+      parts: parts.map((o) => ({ o, pos: o.position.clone(), quat: o.quaternion.clone() })),
+    });
+  }
+
+  // part toggles
+  const pt = $('partToggles'); pt.innerHTML = '';
+  GROUPS.forEach(([key, label]) => {
+    const node = groupNode(key);
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<label>${label}</label><label class="switch"><input type="checkbox" data-group="${key}" ${node ? 'checked' : 'disabled'}><span></span></label>`;
+    pt.appendChild(row);
+    row.querySelector('input').addEventListener('change', (e) => { if (node) node.visible = e.target.checked; });
+  });
+
+  // fault list
+  const fl = $('faultList'); fl.innerHTML = '';
+  GROUPS.forEach(([key, label]) => {
+    const node = groupNode(key); if (!node) return;
+    const det = document.createElement('details');
+    det.innerHTML = `<summary><span>${label}</span><span class="cnt" data-cnt="${key}"></span></summary><div class="items"></div>`;
+    const items = det.querySelector('.items');
+    (FAULTS[key] || []).forEach(([name, re, s1, s2], i) => {
+      const targets = node.children.filter((c) => {
+        if (!re.test(c.name)) return false;
+        const cen = new THREE.Box3().setFromObject(c).getCenter(new THREE.Vector3());
+        for (const f of [s1, s2]) {
+          if (f === 'L' && cen.x <= 0) return false;
+          if (f === 'R' && cen.x >= 0) return false;
+          if (f === 'F' && cen.z <= 0) return false;
+          if (f === 'B' && cen.z >= 0) return false;
+        }
+        return true;
+      });
+      if (!targets.length) return;
+      const id = `${key}:${i}`;
+      faultTargets.set(id, targets);
+      const lab = document.createElement('label');
+      lab.innerHTML = `<input type="checkbox" data-fault="${id}">${name}`;
+      lab.querySelector('input').addEventListener('change', (e) => setFault(id, e.target.checked));
+      items.appendChild(lab);
+    });
+    fl.appendChild(det);
+  });
+  updateFaultCounts();
+}
+
+function setFault(id, on) {
+  const targets = faultTargets.get(id) || [];
+  if (on) faulty.add(id); else faulty.delete(id);
+  targets.forEach((t) => t.traverse((o) => {
+    if (!o.isMesh || o.userData.fx) return;
+    if (on && !o.userData.faultFx) {
+      const glow = new THREE.Mesh(o.geometry, faultGlow); glow.userData.fx = true; glow.renderOrder = 999;
+      const tint = new THREE.Mesh(o.geometry, faultTint); tint.userData.fx = true; tint.renderOrder = 998;
+      o.add(glow, tint); o.userData.faultFx = [glow, tint];
+    } else if (!on && o.userData.faultFx) {
+      o.userData.faultFx.forEach((m) => o.remove(m)); delete o.userData.faultFx;
+    }
+  }));
+  updateFaultCounts();
+}
+
+function updateFaultCounts() {
+  const per = {};
+  faulty.forEach((id) => { const k = id.split(':')[0]; per[k] = (per[k] || 0) + 1; });
+  document.querySelectorAll('[data-cnt]').forEach((el) => { const n = per[el.dataset.cnt]; el.textContent = n ? `故障 ${n}` : ''; });
+  $('faultTotal').textContent = faulty.size ? `（${faulty.size}）` : '';
+}
+
+// ------------------------------------------------------------------ display modes
+function ensureEdges(mesh) {
+  if (mesh.userData.edges) return mesh.userData.edges;
+  const eg = new THREE.EdgesGeometry(mesh.geometry, 28);
+  const lines = new THREE.LineSegments(eg, edgeMat);
+  lines.userData.fx = true; lines.raycast = () => {};
+  mesh.add(lines);
+  mesh.userData.edges = lines;
+  return lines;
+}
+
+function applyMode() {
+  $('holoSub').classList.toggle('show', mode === 'holo');
+  $('staticSub').classList.toggle('show', mode === 'static');
+  shadow.visible = mode === 'original';
+  if (!model) return;
+  const meshes = [];
+  model.traverse((o) => { if (o.isMesh && !o.userData.fx) meshes.push(o); });
+  if (mode === 'static' && meshes.some((m) => !m.userData.edges)) msg('產生靜態全息影像線框中…');
+  // defer so the message can paint before edge generation
+  setTimeout(() => {
+    meshes.forEach((m) => {
+      m.material = mode === 'original' ? m.userData.orig : mode === 'holo' ? holoMat : staticMat;
+      if (mode === 'static') ensureEdges(m).visible = true;
+      else if (m.userData.edges) m.userData.edges.visible = false;
+    });
+    if (mode === 'static') msg('');
+  }, 0);
+}
+
+// ------------------------------------------------------------------ UI wiring
+function setBg() {
+  document.documentElement.style.setProperty('--bg-top', $('bgTop').value);
+  document.documentElement.style.setProperty('--bg-bottom', $('bgBottom').value);
+}
+$('bgTop').addEventListener('input', setBg);
+$('bgBottom').addEventListener('input', setBg);
+
+$('paint').addEventListener('input', (e) => {
+  if (!model || !isCar) return;
+  const done = new Set();
+  model.traverse((o) => {
+    const m = o.userData?.orig;
+    if (o.isMesh && m && m.name === PAINT_MAT && !done.has(m)) { m.color.set(e.target.value); done.add(m); }
+  });
+});
+
+$('spin').addEventListener('change', (e) => { spin = e.target.checked && isCar; });
+
+document.querySelectorAll('input[name=mode]').forEach((r) => r.addEventListener('change', (e) => { mode = e.target.value; applyMode(); }));
+$('holoColor').addEventListener('input', (e) => holoMat.uniforms.uColor.value.set(e.target.value));
+$('staticColor').addEventListener('input', (e) => { staticMat.uniforms.uColor.value.set(e.target.value); edgeMat.color.set(e.target.value); });
+
+function setAllParts(on) {
+  document.querySelectorAll('[data-group]').forEach((cb) => {
+    if (cb.disabled) return;
+    cb.checked = on;
+    const node = groupNode(cb.dataset.group); if (node) node.visible = on;
+  });
+}
+$('allOn').addEventListener('click', () => setAllParts(true));
+$('allOff').addEventListener('click', () => setAllParts(false));
+$('faultClear').addEventListener('click', () => {
+  [...faulty].forEach((id) => setFault(id, false));
+  document.querySelectorAll('[data-fault]').forEach((cb) => (cb.checked = false));
+});
+
+$('pick').addEventListener('click', () => $('fileInput').click());
+$('fileInput').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; });
+$('reload').addEventListener('click', () => loadURL(CAR_FILE, CAR_FILE));
+$('toggle').addEventListener('click', () => $('panel').classList.toggle('open'));
+
+// drag & drop
+let dragDepth = 0;
+window.addEventListener('dragenter', (e) => { e.preventDefault(); dragDepth++; $('drop').classList.add('show'); });
+window.addEventListener('dragleave', (e) => { e.preventDefault(); if (--dragDepth <= 0) { dragDepth = 0; $('drop').classList.remove('show'); } });
+window.addEventListener('dragover', (e) => e.preventDefault());
+window.addEventListener('drop', (e) => {
+  e.preventDefault(); dragDepth = 0; $('drop').classList.remove('show');
+  const f = [...(e.dataTransfer?.files || [])].find((x) => /\.(glb|gltf)$/i.test(x.name));
+  if (f) loadFile(f); else msg('請拖入 .glb 檔', true);
+});
+
+// ------------------------------------------------------------------ loop
+const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _Y = new THREE.Vector3(0, 1, 0);
+function applyDoors() {
+  const e = doorT * doorT * (3 - 2 * doorT);           // smooth ease in/out
+  for (const rig of doorRigs) {
+    _q.setFromAxisAngle(_Y, rig.sign * DOOR_ANGLE * e);
+    for (const p of rig.parts) {
+      _v.copy(p.pos).sub(rig.hinge).applyQuaternion(_q).add(rig.hinge);
+      p.o.position.copy(_v);
+      p.o.quaternion.copy(_q).multiply(p.quat);
+    }
+  }
+}
+function updateDoorBtn() {
+  const sw = $('doorSw'), lab = $('doorLabel'); if (!sw) return;
+  const moving = doorT !== doorTarget;
+  sw.disabled = moving;
+  sw.checked = doorTarget === 1;
+  lab.textContent = moving ? (doorTarget ? '車門開啟中…' : '車門關閉中…') : (doorT ? '關閉車門' : '打開車門');
+}
+$('doorSw').addEventListener('change', (e) => {
+  if (!isCar || !doorRigs.length || doorT !== doorTarget) { updateDoorBtn(); return; }
+  doorTarget = e.target.checked ? 1 : 0;
+  updateDoorBtn();
+});
+
+function tick() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  uTime.value += dt;
+  if (spin) wheels.forEach((w) => w.rotateX(dt * 9.0));   // ~ +Z is forward
+  if (doorT !== doorTarget) {
+    const step = dt / DOOR_TIME;
+    doorT = doorTarget > doorT ? Math.min(doorTarget, doorT + step) : Math.max(doorTarget, doorT - step);
+    applyDoors();
+    if (doorT === doorTarget) updateDoorBtn();
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+resize();
+setBg();
+loadURL(CAR_FILE, CAR_FILE);
+tick();
+</script>
+</body>
+</html>
