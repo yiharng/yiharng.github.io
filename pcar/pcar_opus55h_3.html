@@ -6,7 +6,7 @@
 <title>911 GT3 檢視器</title>
 <style>
   :root {
-    --bg-top: #ffffff;
+    --bg-top: #000000;
     --bg-bottom: #888888;
     --panel-bg: rgba(18, 22, 30, 0.86);
     --panel-fg: #e8ecf2;
@@ -94,44 +94,44 @@
 
   <section id="secBg">
     <h2><span class="n">1</span>背景顏色（上 → 下漸層）</h2>
-    <div class="row"><label for="bgTop">上方顏色</label><input type="color" id="bgTop" value="#ffffff"></div>
+    <div class="row"><label for="bgTop">上方顏色</label><input type="color" id="bgTop" value="#000000"></div>
     <div class="row"><label for="bgBottom">下方顏色</label><input type="color" id="bgBottom" value="#888888"></div>
   </section>
 
   <section id="secPaint" class="car-only">
     <h2><span class="n">2</span>車身顏色</h2>
     <div class="row"><label for="paint">烤漆顏色</label><input type="color" id="paint" value="#2f5a8c"></div>
-    <div class="note">僅 pcar_opus55h_3.glb 可使用</div>
+    <div class="note">僅 pcar_opus55h 模型可使用</div>
   </section>
 
   <section id="secAnim" class="car-only">
     <h2><span class="n">3</span>動畫</h2>
     <div class="row"><label for="spin">輪子旋轉</label><label class="switch"><input type="checkbox" id="spin"><span></span></label></div>
     <div class="row"><label for="doorSw" id="doorLabel">打開車門</label><label class="switch"><input type="checkbox" id="doorSw"><span></span></label></div>
-    <div class="note">僅 pcar_opus55h_3.glb 可使用</div>
+    <div class="note">僅 pcar_opus55h 模型可使用</div>
   </section>
 
   <section id="secMode">
     <h2><span class="n">4</span>顯示模式</h2>
     <label class="radio"><input type="radio" name="mode" value="original" checked>原圖</label>
     <label class="radio"><input type="radio" name="mode" value="holo">全息影像</label>
-    <div class="row sub" id="holoSub"><label for="holoColor">全息影像顏色</label><input type="color" id="holoColor" value="#2f9bff"></div>
+    <div class="row sub" id="holoSub"><label for="holoColor">全息影像顏色</label><input type="color" id="holoColor" value="#74baff"></div>
     <label class="radio"><input type="radio" name="mode" value="static">靜態全息影像</label>
-    <div class="row sub" id="staticSub"><label for="staticColor">靜態全息影像顏色</label><input type="color" id="staticColor" value="#3aa4ff"></div>
+    <div class="row sub" id="staticSub"><label for="staticColor">靜態全息影像顏色</label><input type="color" id="staticColor" value="#74baff"></div>
   </section>
 
   <section id="secParts" class="car-only">
     <h2><span class="n">5</span>零件顯示</h2>
     <div id="partToggles"></div>
     <div class="btns"><button id="allOn">全部顯示</button><button id="allOff">全部隱藏</button></div>
-    <div class="note">僅 pcar_opus55h_3.glb 可使用</div>
+    <div class="note">僅 pcar_opus55h 模型可使用</div>
   </section>
 
   <section id="secFault" class="car-only">
     <h2><span class="n">6</span>故障零件 <span id="faultTotal" style="color:var(--danger);font-weight:400"></span></h2>
     <div id="faultList"></div>
     <div class="btns"><button id="faultClear">清除全部故障</button></div>
-    <div class="note">僅 pcar_opus55h_3.glb 可使用</div>
+    <div class="note">僅 pcar_opus55h 模型可使用</div>
   </section>
 
   <section id="secLoad">
@@ -146,9 +146,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
-const CAR_FILE = 'pcar_opus55h_3.glb';
+const CAR_FILE = 'pcar_opus55h_3_min.glb';
 const PAINT_MAT = 'Paint_SharkBlue';
 
 // ------------------------------------------------------------------ renderer / scene
@@ -249,12 +251,12 @@ const staticFS = /* glsl */`
   }`;
 
 const holoMat = new THREE.ShaderMaterial({
-  uniforms: { uColor: { value: new THREE.Color('#2f9bff') }, uTime, uMinY, uMaxY },
+  uniforms: { uColor: { value: new THREE.Color('#74baff') }, uTime, uMinY, uMaxY },
   vertexShader: holoVS, fragmentShader: holoFS, defines: { GLITCH: 1 },
   transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.NormalBlending, toneMapped: false,
 });
 const staticMat = new THREE.ShaderMaterial({
-  uniforms: { uColor: { value: new THREE.Color('#3aa4ff') }, uTime },
+  uniforms: { uColor: { value: new THREE.Color('#74baff') }, uTime },
   vertexShader: holoVS, fragmentShader: staticFS,
   transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.NormalBlending, toneMapped: false,
 });
@@ -328,7 +330,12 @@ const $ = (id) => document.getElementById(id);
 const msg = (t, err = false) => { $('msg').textContent = t || ''; $('msg').className = err ? 'err' : ''; };
 
 // ------------------------------------------------------------------ loading
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+
 const loader = new GLTFLoader();
+loader.setDRACOLoader(dracoLoader);
+loader.setMeshoptDecoder(MeshoptDecoder);
 
 function disposeModel() {
   if (!model) return;
@@ -347,7 +354,8 @@ function setModel(gltfScene, name) {
   disposeModel();
   faulty.clear(); faultTargets.clear(); wheels = []; doorRigs = []; doorT = doorTarget = 0; updateDoorBtn();
   model = gltfScene;
-  isCar = name.split(/[\\/]/).pop() === CAR_FILE;
+  const baseName = name.split(/[\\/]/).pop();
+  isCar = baseName.includes('pcar_opus55h') || baseName === CAR_FILE;
   model.traverse((o) => { if (o.isMesh) o.userData.orig = o.material; });
   scene.add(model);
 
